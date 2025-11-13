@@ -45,8 +45,15 @@ synth - three_gun
 thumbs up - like
 rock - rock
 
-make folder w all the classes/labels we want - copy everything from the folders we want into the ones we do (delete og files we don't want 4 space)
+Use scipy train_test_split instead of manually splitting?
+pip install split-folders will allow us to create folders for train/test/val split instead
 
-wlocka strat -> make textfile with all the files we dont want and us OS to loop/delete - same thing for moving the files (make)
+creating our own model vs using a pretrained one
+we might try to create our own model first and then compare it to a pretrained model
 
-deleting tests - call is running outside of tmux, rmdir attempt on grabbing
+we need to create our own virtual environment in the cs153 folder not in our own folders
+mediapipe
+
+use prerecorded videos for heavier models on the server since we can't access video
+
+video capture could be done with mac library called "metal" which is a shared mem between cpu/gpu
