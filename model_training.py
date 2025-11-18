@@ -12,6 +12,7 @@ import time
 import os
 import copy
 import matplotlib.pyplot as plt
+from simple_model import Classifier, SimpleClassifier
 
 #******Helper functions********
 # These are all as seen in class (with slight modifications to adapt them)
@@ -175,6 +176,28 @@ def setup_model(datadict, device):
     optimizer = optim.SGD(model.classifier[3:].parameters(), lr=0.001, momentum=0.9)
 
     # Decay LR by a factor of 0.1 every 7 epochs
+    scheduler = lr_scheduler.StepLR(optimizer, step_size=7, gamma=0.1)
+
+    model_dict = {
+        "model": model,
+        "criterion": criterion,
+        "optimizer": optimizer,
+        "scheduler": scheduler
+    }
+
+    return model_dict
+
+def setup_simple_model(datadict, class_n, device):
+    # initialize model
+    # get input size and number of classes
+    num_classes = datadict["num_classes"]
+
+    network_init = {"1": Classifier(input_size, num_classes), "2": SimpleClassifier(input_size, num_classes)}
+
+    model = network_init[class_n]
+    
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
     scheduler = lr_scheduler.StepLR(optimizer, step_size=7, gamma=0.1)
 
     model_dict = {
