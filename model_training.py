@@ -1,5 +1,3 @@
-# This is currently just taken from assignment 6
-
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -7,12 +5,16 @@ from torch.optim import lr_scheduler
 import torch.backends.cudnn as cudnn
 import numpy as np
 import torchvision
-from torchvision import datasets, models, transforms
+from torchvision import datasets, transforms
 import time
 import os
 import copy
 import matplotlib.pyplot as plt
 from simple_model import Classifier, SimpleClassifier
+from tqdm import tqdm
+import pandas as pd
+# %matplotlib inline
+plt.rcParams['figure.figsize'] = [16, 10]
 
 #******Helper functions********
 # These are all as seen in class (with slight modifications to adapt them)
@@ -177,7 +179,8 @@ def setup_model(datadict, device):
 
     # Decay LR by a factor of 0.1 every 7 epochs
     scheduler = lr_scheduler.StepLR(optimizer, step_size=7, gamma=0.1)
-
+    if torch.cuda.is_available():
+        model.to('cuda') # or model.cuda()
     model_dict = {
         "model": model,
         "criterion": criterion,
@@ -192,14 +195,16 @@ def setup_simple_model(datadict, class_n, device):
     # get input size and number of classes
     num_classes = datadict["num_classes"]
 
-    network_init = {"1": Classifier(input_size, num_classes), "2": SimpleClassifier(input_size, num_classes)}
+    # for now, 3 is the number of channels
+    network_init = {"1": Classifier(3, num_classes), "2": SimpleClassifier(150528, num_classes)}
 
     model = network_init[class_n]
     
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
     scheduler = lr_scheduler.StepLR(optimizer, step_size=7, gamma=0.1)
-
+    if torch.cuda.is_available():
+        model.to('cuda') # or model.cuda()
     model_dict = {
         "model": model,
         "criterion": criterion,
@@ -242,14 +247,12 @@ def train_model(model_dict, dataloaders, datadict, device, num_epochs=15):
     acclog = [[],[]]
     classlog = [] # this is the list you will use to append class accuracy
     num_classes = datadict['num_classes']
-    labels = datadict['class_names']
+    class_names = datadict['class_names']
 
-
-    for epoch in range(num_epochs):
-        print(f'Epoch {epoch}/{num_epochs - 1}')
-        print('-' * 10)
+    for epoch in tqdm(range(num_epochs)):
 
         class_correct = np.zeros(num_classes)
+        class_total = np.zeros(num_classes)
 
         # Each epoch has a training and validation phase
         for phase in ['train', 'val']:
@@ -262,7 +265,7 @@ def train_model(model_dict, dataloaders, datadict, device, num_epochs=15):
             running_corrects = 0
 
             # Iterate over data.
-            for inputs, labels in dataloaders[phase]:
+            for inputs, labels in tqdm(dataloaders[phase], leave=False):
                 inputs = inputs.to(device)
                 labels = labels.to(device)
 
@@ -289,6 +292,7 @@ def train_model(model_dict, dataloaders, datadict, device, num_epochs=15):
                     for i in range(len(labels)):
                         label = labels[i].item() # item makes it a number
                         pred = preds[i].item()
+                        class_total[label] += 1   
                         if label == pred:
                             class_correct[label] += 1
         
@@ -298,17 +302,13 @@ def train_model(model_dict, dataloaders, datadict, device, num_epochs=15):
             epoch_loss = running_loss / datadict["dataset_sizes"][phase]
             epoch_acc = running_corrects.double() / datadict["dataset_sizes"][phase]
 
-            print(f'{phase} Loss: {epoch_loss:.4f} Acc: {epoch_acc:.4f}')
-
             # data logging
             if phase == 'train':
                 losslog[0].append(epoch_loss)
-                acclog[0].append(epoch_acc.to('cpu'))
+                acclog[0].append(float(epoch_acc))
             else:
                 losslog[1].append(epoch_loss)
-                acclog[1].append(epoch_acc.to('cpu'))
-
-            
+                acclog[1].append(float(epoch_acc))           
 
 
             # deep copy the model
@@ -316,9 +316,22 @@ def train_model(model_dict, dataloaders, datadict, device, num_epochs=15):
                 best_acc = epoch_acc
                 best_model_wts = copy.deepcopy(model_dict["model"].state_dict())
             # integrate the classlog
-        class_acc = class_correct / numval
+        
+        # Compute per-class accuracy safely
+        raw_acc = np.divide(
+            class_correct,
+            class_total,
+            out=np.zeros_like(class_correct),
+            where=class_total != 0
+        )
+
+        # Convert to dict using class names
+        class_acc = {
+            class_names[i]: raw_acc[i]
+            for i in range(num_classes)
+        }
+
         classlog.append(class_acc)
-        # print()
 
     time_elapsed = time.time() - since
     print(f'Training complete in {time_elapsed // 60:.0f}m {time_elapsed % 60:.0f}s')
@@ -336,3 +349,70 @@ def train_model(model_dict, dataloaders, datadict, device, num_epochs=15):
     }
 
     return model_dict, logs
+
+if __name__ == "__main__":
+    epochs = 50
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    data_dir = '/cs/cs153/datasets/music_gestures' # this line assumes you are working from the CS servers.
+
+    dataloader_v1, datadict = build_dataloader(data_dir, version = 1)
+    model1_dict = setup_simple_model(datadict, "1", device)
+    model2_dict = setup_simple_model(datadict, "2", device)
+    model3_dict = setup_model(datadict, device)
+
+    model1_dict, log1 = train_model(model1_dict, dataloader_v1, datadict, device, num_epochs=epochs)
+    model2_dict, log2 = train_model(model2_dict, dataloader_v1, datadict, device, num_epochs=epochs)
+    model3_dict, log3 = train_model(model3_dict, dataloader_v1, datadict, device, num_epochs=epochs)
+
+    model_1 = model1_dict["model"]
+    model_2 = model2_dict["model"]
+    model_3 = model3_dict["model"]
+
+    path1 = "model_state_dict_1.pth"
+    path2 = "model_state_dict_2.pth"
+    path3 = "model_state_dict_3.pth"
+    torch.save(model_1.state_dict(), path1)
+    torch.save(model_2.state_dict(), path2)
+    torch.save(model_3.state_dict(), path3)
+
+    if not os.path.exists('output/'):
+        os.mkdir('output')
+
+    fig = plt.figure()
+
+    ax = fig.add_subplot(1,3,1)
+    ax.set_ylim([0.6,1.0])
+    plt.plot(log1["train_acc"], 'r-')
+    plt.plot(log1["val_acc"], 'b-')
+    plt.xlabel('epoch')
+    plt.ylabel('Accuracy')
+    plt.title('Accuracy for Model V1')
+    plt.legend(['training', 'validation'])
+
+    ax = fig.add_subplot(1,3,2)
+    ax.set_ylim([0.6,1.0])
+    plt.plot(log2["train_acc"], 'r-')
+    plt.plot(log2["val_acc"], 'b-')
+    plt.title('Accuracy for Model V2')
+    plt.xlabel('epoch')
+    plt.ylabel('Accuracy')
+    plt.legend(['training', 'validation'])
+
+    ax = fig.add_subplot(1,3,3)
+    ax.set_ylim([0.6,1.0])
+    plt.plot(log3["train_acc"], 'r-')
+    plt.plot(log3["val_acc"], 'b-')
+    plt.title('Accuracy for Model V3')
+    plt.xlabel('epoch')
+    plt.ylabel('Accuracy')
+    plt.legend(['training', 'validation'])
+
+    fig.savefig('output/model_acc.png', bbox_inches='tight', pad_inches=0)
+
+    df_1=pd.DataFrame(log1)
+    df_2=pd.DataFrame(log2)
+    df_3=pd.DataFrame(log3)
+
+    df_1.to_csv('output_4.csv', index=False)
+    df_2.to_csv('output_5.csv', index=False)
+    df_3.to_csv('output_6.csv', index=False)
