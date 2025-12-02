@@ -1,6 +1,9 @@
 *.pth
 *.pt
 hagrid_models/
+gesture_audio.wav
+gesture_final.mp4
+gesture_output.mp4
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
