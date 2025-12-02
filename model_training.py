@@ -108,7 +108,7 @@ def build_dataloader(data_dir, version = 0):
             ]),
         }
     else:
-        error("Not a recognized dataloader version flag.")
+        raise ValueError("Not a recognized dataloader version flag.")
 
     image_datasets = {x: datasets.ImageFolder(os.path.join(data_dir, x),
                           data_transforms[x])
@@ -361,19 +361,26 @@ if __name__ == "__main__":
     model3_dict = setup_model(datadict, device)
 
     model1_dict, log1 = train_model(model1_dict, dataloader_v1, datadict, device, num_epochs=epochs)
-    model2_dict, log2 = train_model(model2_dict, dataloader_v1, datadict, device, num_epochs=epochs)
-    model3_dict, log3 = train_model(model3_dict, dataloader_v1, datadict, device, num_epochs=epochs)
-
     model_1 = model1_dict["model"]
-    model_2 = model2_dict["model"]
-    model_3 = model3_dict["model"]
-
     path1 = "model_state_dict_1.pth"
-    path2 = "model_state_dict_2.pth"
-    path3 = "model_state_dict_3.pth"
     torch.save(model_1.state_dict(), path1)
+    df_1=pd.DataFrame(log1)
+    df_1.to_csv('output_4.csv', index=False)
+
+
+    model2_dict, log2 = train_model(model2_dict, dataloader_v1, datadict, device, num_epochs=epochs)
+    model_2 = model2_dict["model"]
+    path2 = "model_state_dict_2.pth"
     torch.save(model_2.state_dict(), path2)
+    df_2=pd.DataFrame(log2)
+    df_2.to_csv('output_5.csv', index=False)
+    
+    model3_dict, log3 = train_model(model3_dict, dataloader_v1, datadict, device, num_epochs=epochs)
+    model_3 = model3_dict["model"]
+    path3 = "model_state_dict_3.pth"
     torch.save(model_3.state_dict(), path3)
+    df_3=pd.DataFrame(log3)
+    df_3.to_csv('output_6.csv', index=False)
 
     if not os.path.exists('output/'):
         os.mkdir('output')
@@ -408,11 +415,3 @@ if __name__ == "__main__":
     plt.legend(['training', 'validation'])
 
     fig.savefig('output/model_acc.png', bbox_inches='tight', pad_inches=0)
-
-    df_1=pd.DataFrame(log1)
-    df_2=pd.DataFrame(log2)
-    df_3=pd.DataFrame(log3)
-
-    df_1.to_csv('output_4.csv', index=False)
-    df_2.to_csv('output_5.csv', index=False)
-    df_3.to_csv('output_6.csv', index=False)
