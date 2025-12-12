@@ -38,12 +38,41 @@ FORMAT = pyaudio.paInt16
 CHANNELS = 1
 RATE = 44100
 
+sine_time = 0.0
+previous_segment = None
+
 def synth_sound(frame_segment):
-    sine = Sine(440).to_audio_segment(duration=len(frame_segment)).apply_gain(-15) # meant to smooth the sine
+    global sine_time
+
+    clip_time = len(frame_segment)
+
+    sine = Sine(440).to_audio_segment(duration=clip_time*2).apply_gain(-35) # meant to smooth the sine
+    
+    start_time = int(sine_time)
+    end = start_time+clip_time
+
+    if end > len(sine):
+        end = len(sine)
+        sine_chunk = sine[start_time:end]
+        remaining = clip_time - len(sine_chunk)
+        sine_chunk += sine[:remaining]
+        sine_time = remaining
+    else:
+        sine_chunk = sine[start_time:end]
+        sine_time += clip_time
+
+    sine_chunk = sine_chunk.fade_in(10).fade_out(10)
+
     frame_segment = frame_segment.overlay(sine)
 
     return frame_segment
-def apply_choral_effect(segment):
+
+
+def apply_choral_effect(frame_segment):
+    global previous_segment
+
+    base_seg = frame_segment
+
     # speed change to shift pitch (slightly up and down)
     def pitch_shift(seg, semitones):
         factor = 2 ** (semitones / 12)
@@ -51,13 +80,24 @@ def apply_choral_effect(segment):
         shifted = seg._spawn(seg.raw_data, overrides={'frame_rate': new_rate})
         return shifted.set_frame_rate(seg.frame_rate)
     
-    segment = segment.fade_in(3).fade_out(3)
-    maj3 = pitch_shift(segment, 4)
-    p5 = pitch_shift(segment, 7)
+    maj3 = pitch_shift(base_seg, 4)
+    p5 = pitch_shift(base_seg, 7)
+    mixed = base_seg.overlay(maj3).overlay(p5)
+
+    if previous_segment is None:
+        previous_segment = mixed
+        return mixed
+
+    smoothed = previous_segment.append(mixed, crossfade=20)
+    previous_segment = mixed
+
+    return smoothed
+
+
 
     # semitones to octave conversion
 
-    return segment.overlay(maj3).overlay(p5)
+    return frame_segment.overlay(maj3).overlay(p5)
 def record_audio():
     global audio_segment, audio_stop_flag, current_gesture
 
@@ -86,8 +126,6 @@ def record_audio():
     p.terminate()
 
 def init_recognizer():
-
-
     base_options = python.BaseOptions(model_asset_path=MODEL_PATH)
     GestureRecognizer = vision.GestureRecognizer
     GestureRecognizerOptions = vision.GestureRecognizerOptions
